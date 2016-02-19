@@ -29,21 +29,25 @@ class LogStash::Codecs::Cloudfront < LogStash::Codecs::Base
   public
   def decode(data)
     begin
-      @gzip = Zlib::GzipReader.new(data)
-
-      metadata = extract_metadata(@gzip)
-
-      @logger.debug("Cloudfront: Extracting metadata", :metadata => metadata)
-
-      @gzip.each_line do |line|
-        yield create_event(line, metadata)
-      end
-
-    rescue Zlib::Error, Zlib::GzipFile::Error=> e
+      data = StringIO.new(data) if data.is_a?(String)
+      @stream = Zlib::GzipReader.new(data)
+    rescue Zlib::GzipFile::Error => e
+      # Just try and parse the plain string
+      @stream = data
+      @stream.rewind
+    rescue Zlib::Error => e
       file = data.is_a?(String) ? data : data.class
 
       @logger.error("Cloudfront codec: We cannot uncompress the gzip file", :filename => file)
       raise e
+    end
+
+    metadata = extract_metadata(@stream)
+
+    @logger.debug("Cloudfront: Extracting metadata", :metadata => metadata)
+
+    @stream.each_line do |line|
+      yield create_event(line, metadata)
     end
   end # def decode
 
